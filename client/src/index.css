@@ -1,0 +1,156 @@
+:root {
+  --bg-app: #f9fafb;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --text-main: #111827;
+  --text-sub: #6b7280;
+  --text-muted: #9ca3af;
+  --border-light: #e5e7eb;
+  --border-focus: #10b981;
+  
+  --brand-primary: #10b981;
+  --brand-primary-hover: #059669;
+  --brand-primary-light: #ecfdf5;
+  --brand-black: #111827;
+  
+  --profit-green: #059669;
+  --profit-bg: #d1fae5;
+  --profit-light: #ecfdf5;
+  --loss-red: #e11d48;
+  --loss-bg: #ffe4e6;
+  --loss-light: #fff1f2;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  background: none;
+  transition: all 0.15s ease-in-out;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  outline: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Ticker marquee animation - SLOW & SMOOTH (240s) */
+@keyframes tickerScroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-marquee {
+  display: flex;
+  white-space: nowrap;
+  animation: tickerScroll 240s linear infinite; /* Glides very calmly and slowly */
+}
+
+.ticker-container:hover .ticker-marquee {
+  animation-play-state: paused; /* Pause smoothly on hover */
+}
+
+/* Flash price update animations */
+@keyframes flashGreen {
+  0% { background-color: rgba(16, 185, 129, 0.3); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flashRed {
+  0% { background-color: rgba(225, 29, 72, 0.3); }
+  100% { background-color: transparent; }
+}
+
+.flash-up {
+  animation: flashGreen 1.2s ease-out;
+}
+
+.flash-down {
+  animation: flashRed 1.2s ease-out;
+}
+
+/* Responsive layout containers */
+.app-layout {
+  display: flex;
+  min-height: calc(100vh - 36px);
+  width: 100%;
+  position: relative;
+}
+
+.app-main {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    flex-direction: column;
+  }
+  .app-main {
+    padding: 16px;
+  }
+}
