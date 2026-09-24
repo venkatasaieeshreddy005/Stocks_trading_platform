@@ -4,7 +4,7 @@ import HeaderTicker from './HeaderTicker';
 import Sidebar from './Sidebar';
 import ZenAICopilot from './ZenAICopilot';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Wallet, User as UserIcon } from 'lucide-react';
+import { LogOut, Wallet } from 'lucide-react';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -16,34 +16,60 @@ export default function AppLayout() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#f9fafb' }}>
-      {/* Absolute top persistent slow ticker tape */}
-      <HeaderTicker />
+    <div
+      style={{
+        height: '100vh',
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        backgroundColor: '#f9fafb'
+      }}
+    >
+      <div style={{ flexShrink: 0 }}>
+        <HeaderTicker />
+      </div>
 
-      {/* Main app body with sidebar and content */}
       <div className="app-layout">
         <Sidebar />
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* Top App Header Bar with Cash Balance and Quick Sign Out */}
-          <header style={{
-            height: '56px',
-            backgroundColor: '#ffffff',
-            borderBottom: '1px solid #e5e7eb',
-            padding: '0 32px',
+        <div
+          style={{
+            flex: 1,
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            boxSizing: 'border-box'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+            flexDirection: 'column',
+            minWidth: 0,
+            minHeight: 0
+          }}
+        >
+          <header
+            style={{
+              height: '56px',
+              flexShrink: 0,
+              backgroundColor: '#ffffff',
+              borderBottom: '1px solid #e5e7eb',
+              padding: '0 32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                color: '#64748b'
+              }}
+            >
               <span>Paper Trading Arena</span>
               <span>·</span>
               <span style={{ color: '#10b981', fontWeight: 600 }}>Live Simulated Feed</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              {/* Demo Capital Pill */}
               <Link
                 to="/add-funds"
                 style={{
@@ -60,10 +86,11 @@ export default function AppLayout() {
                 }}
               >
                 <Wallet size={15} color="#10b981" />
-                <span>₹{user?.virtualCashBalance?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '50,000.00'}</span>
+                <span>
+                  ₹{user?.virtualCashBalance?.toLocaleString('en-IN', { minimumFractionDigits: 2 }) || '50,000.00'}
+                </span>
               </Link>
 
-              {/* Top Quick Sign Out Button */}
               <button
                 onClick={handleSignOut}
                 style={{
@@ -87,13 +114,14 @@ export default function AppLayout() {
             </div>
           </header>
 
-          <main className="app-main">
-            <Outlet />
+          <main className="app-scroll">
+            <div className="app-main">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
 
-      {/* Floating ZenAI Copilot */}
       <ZenAICopilot />
     </div>
   );
