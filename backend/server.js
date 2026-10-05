@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const { Server } = require('socket.io');
@@ -19,13 +20,17 @@ const aiRoutes = require('./routes/ai');
 const app = express();
 const server = http.createServer(app);
 
-// Enable CORS for frontend Vite client
+// Enable CORS for frontend Vite client with cookie session credentials support
 app.use(cors({
-  origin: '*',
+  origin: function (origin, callback) {
+    return callback(null, true);
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use(cookieParser());
 app.use(express.json());
 
 // API Routes

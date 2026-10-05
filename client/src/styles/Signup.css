@@ -2,11 +2,13 @@
   min-height: 100vh;
   width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background-color: #f8fafc;
-  padding: 24px;
+  padding: 32px 16px;
   box-sizing: border-box;
+  margin: 0 auto;
 }
 
 .signup-card {
@@ -15,7 +17,9 @@
   border-radius: 20px;
   width: 100%;
   max-width: 460px;
-  margin: auto;
+  margin-left: auto;
+  margin-right: auto;
+  align-self: center;
   padding: 40px 36px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
   display: flex;

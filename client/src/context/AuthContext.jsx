@@ -47,11 +47,15 @@ export function AuthProvider({ children }) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ email, password })
     });
 
     const data = await res.json();
     if (!res.ok) {
+      if (res.status === 403 && data.needsVerification) {
+        return { needsVerification: true, email: data.email, verificationCode: data.verificationCode, message: data.message };
+      }
       throw new Error(data.message || 'Login failed');
     }
 
@@ -66,6 +70,7 @@ export function AuthProvider({ children }) {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ name, email, password })
     });
 
@@ -84,7 +89,8 @@ export function AuthProvider({ children }) {
   const demoLogin = async () => {
     const res = await fetch('/api/auth/demo-login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
     });
 
     const data = await res.json();
@@ -103,7 +109,8 @@ export function AuthProvider({ children }) {
     if (!token) return;
     try {
       const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include'
       });
       if (res.ok) {
         const data = await res.json();
@@ -115,7 +122,15 @@ export function AuthProvider({ children }) {
   };
 
   // Logout handler
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (e) {
+      // Ignore network errors on logout
+    }
     localStorage.removeItem('tradezen_token');
     setToken(null);
     setUser(null);

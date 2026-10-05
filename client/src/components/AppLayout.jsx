@@ -12,7 +12,7 @@ export default function AppLayout() {
 
   const handleSignOut = () => {
     logout();
-    navigate('/login');
+    navigate('/');
   };
 
   return (

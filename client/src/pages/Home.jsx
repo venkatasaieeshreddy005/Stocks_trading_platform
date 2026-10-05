@@ -78,9 +78,6 @@ export default function Home() {
             <Link to="/signup" className="btn-primary">
               Open a demo account <ArrowRight size={18} style={{ marginLeft: '8px' }} />
             </Link>
-            <Link to="/markets" className="btn-secondary">
-              Explore the market
-            </Link>
           </div>
         </div>
 

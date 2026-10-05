@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Activity, X, Clock } from 'lucide-react';
+import { Activity, X, Clock, Mail, CheckCircle2, RefreshCw } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import '../styles/Login.css';
+import '../styles/Signup.css';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -21,7 +23,17 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
 
-  const { login, demoLogin, isAuthenticated } = useAuth();
+  // Email verification modal state (for unverified accounts during login)
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyError, setVerifyError] = useState('');
+  const [verifySuccess, setVerifySuccess] = useState('');
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyCooldown, setVerifyCooldown] = useState(0);
+  const [devCode, setDevCode] = useState('');
+
+  const { login, demoLogin, isAuthenticated, setUser } = useAuth();
   const navigate = useNavigate();
 
   // If already logged in, redirect to dashboard
@@ -31,7 +43,7 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate]);
 
-  // Rate-limit countdown timer
+  // Rate-limit countdown timer for forgot password
   useEffect(() => {
     if (rateLimitCooldown <= 0) return;
     const timer = setInterval(() => {
@@ -40,13 +52,31 @@ export default function Login() {
     return () => clearInterval(timer);
   }, [rateLimitCooldown]);
 
+  // Resend cooldown timer for email verification
+  useEffect(() => {
+    if (verifyCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setVerifyCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [verifyCooldown]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      await login(email, password);
+      const res = await login(email, password);
+      if (res && res.needsVerification) {
+        setVerifyEmail(res.email || email);
+        setDevCode(res.verificationCode || '');
+        setVerifyError('');
+        setVerifySuccess(res.message || 'Your email is not verified yet. We sent a 6-digit code to activate your account.');
+        setShowVerifyModal(true);
+        setVerifyCooldown(60);
+        return;
+      }
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Failed to log in');
@@ -81,6 +111,7 @@ export default function Login() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: forgotEmail })
       });
 
@@ -92,7 +123,6 @@ export default function Login() {
         }
       } else {
         setForgotMessage(data.message || 'Reset code sent successfully!');
-        // Transition to Step 2: Enter verification code & new password
         setForgotStep(2);
         setRateLimitCooldown(60);
       }
@@ -103,7 +133,7 @@ export default function Login() {
     }
   };
 
-  // Step 2: Verify Code and Update Password (using backend-matching 'resetCode')
+  // Step 2: Verify Code and Update Password
   const handleResetPasswordSubmit = async (e) => {
     e.preventDefault();
     setForgotError('');
@@ -114,9 +144,10 @@ export default function Login() {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           email: forgotEmail,
-          resetCode: resetCode.trim(), // Matches backend req.body.resetCode
+          resetCode: resetCode.trim(),
           newPassword
         })
       });
@@ -137,6 +168,74 @@ export default function Login() {
       setForgotError('Network error. Please try again.');
     } finally {
       setForgotLoading(false);
+    }
+  };
+
+  // Verify Email Submit
+  const handleVerifySubmit = async (e) => {
+    e.preventDefault();
+    if (!verifyCode || verifyCode.trim().length !== 6) {
+      return setVerifyError('Please enter the 6-digit verification code.');
+    }
+
+    setVerifyError('');
+    setVerifyLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: verifyEmail, code: verifyCode.trim() })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setVerifyError(data.message || 'Verification failed.');
+      } else {
+        localStorage.setItem('tradezen_token', data.token);
+        setUser(data.user);
+        try {
+          confetti({
+            particleCount: 90,
+            spread: 70,
+            origin: { y: 0.6 }
+          });
+        } catch (err) {}
+        setShowVerifyModal(false);
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setVerifyError('Network error during verification.');
+    } finally {
+      setVerifyLoading(false);
+    }
+  };
+
+  // Resend Email Verification Code
+  const handleResendVerifyCode = async () => {
+    if (verifyCooldown > 0) return;
+    setVerifyError('');
+    setVerifySuccess('');
+
+    try {
+      const res = await fetch('/api/auth/resend-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: verifyEmail })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setVerifyError(data.message || 'Failed to resend code.');
+      } else {
+        setDevCode(data.verificationCode || '');
+        setVerifySuccess(`New 6-digit code dispatched to ${verifyEmail}.`);
+        setVerifyCooldown(60);
+      }
+    } catch (err) {
+      setVerifyError('Network error resending verification code.');
     }
   };
 
@@ -253,10 +352,160 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="auth-footer">
-          Don’t have an account? <Link to="/signup">Create one.</Link>
+        <div className="auth-footer" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div>
+            Don’t have an account? <Link to="/signup" style={{ fontWeight: 700, color: '#10b981' }}>Create one.</Link>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setVerifyEmail(email);
+                setVerifyCode('');
+                setVerifyError('');
+                setVerifySuccess('');
+                setShowVerifyModal(true);
+              }}
+              style={{ fontSize: '12px', color: '#64748b', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              Need to verify your email? Enter code here
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Email Verification Modal (for unverified email accounts) */}
+      {showVerifyModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '16px'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '20px',
+            width: '100%',
+            maxWidth: '440px',
+            padding: '32px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Mail size={20} color="#10b981" />
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
+                  Verify Your Email
+                </h3>
+              </div>
+              <button onClick={() => setShowVerifyModal(false)} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px', lineHeight: 1.5 }}>
+              Enter the 6-digit verification code sent to <strong>{verifyEmail || 'your email'}</strong> to activate your ₹50,000 demo capital.
+            </p>
+
+            {devCode && (
+              <div style={{
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12px',
+                color: '#065f46',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <CheckCircle2 size={16} color="#10b981" />
+                <span>Verification Code: <strong>{devCode}</strong></span>
+              </div>
+            )}
+
+            {verifyError && <div className="error-banner" style={{ marginBottom: '16px' }}>{verifyError}</div>}
+            {verifySuccess && !devCode && (
+              <div style={{
+                backgroundColor: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12px',
+                color: '#065f46',
+                marginBottom: '16px'
+              }}>
+                {verifySuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleVerifySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {!verifyEmail && (
+                <div className="form-group">
+                  <label className="form-label" style={{ fontSize: '12px' }}>Email Address</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="you@example.com"
+                    value={verifyEmail}
+                    onChange={(e) => setVerifyEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontSize: '12px' }}>6-Digit OTP Code</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  className="form-input"
+                  placeholder="123456"
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                  style={{ textAlign: 'center', fontSize: '22px', fontWeight: 800, letterSpacing: '6px' }}
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="submit-btn"
+                disabled={verifyLoading}
+                style={{ marginTop: '6px' }}
+              >
+                {verifyLoading ? 'Verifying...' : 'Verify & Enter TradeZen'}
+              </button>
+
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  onClick={handleResendVerifyCode}
+                  disabled={verifyCooldown > 0}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    color: verifyCooldown > 0 ? '#94a3b8' : '#10b981',
+                    fontWeight: 600,
+                    cursor: verifyCooldown > 0 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <RefreshCw size={13} />
+                  {verifyCooldown > 0 ? `Resend code in ${verifyCooldown}s` : 'Resend 6-Digit Code'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
@@ -289,14 +538,15 @@ export default function Login() {
             </div>
 
             {forgotError && <div className="error-banner" style={{ marginBottom: '12px' }}>{forgotError}</div>}
-            {forgotMessage && <div className="success-banner" style={{ marginBottom: '12px', padding: '10px', backgroundColor: '#d1fae5', color: '#065f46', borderRadius: '8px', fontSize: '13px' }}>{forgotMessage}</div>}
+            {forgotMessage && <div className="success-banner" style={{ marginBottom: '12px' }}>{forgotMessage}</div>}
 
-            {/* STEP 1: Enter Email Form */}
+            {/* STEP 1: Request Reset Code Form */}
             {forgotStep === 1 && (
               <>
-                <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '18px', lineHeight: 1.5 }}>
-                  Enter your account email below. We will generate and send your secure reset code.
+                <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '14px', lineHeight: 1.5 }}>
+                  Enter your registered TradeZen email address to receive password reset instructions.
                 </p>
+
                 <form onSubmit={handleForgotPasswordRequest} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   <input
                     type="email"
