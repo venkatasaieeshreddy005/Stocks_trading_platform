@@ -6,7 +6,13 @@ const Alert = require('../models/Alert');
 
 const TICK_INTERVAL_MS = 2000;
 const SPARKLINE_LENGTH = 25;
-const MAX_TICK_IMPACT_PERCENT = 0.005;
+const MAX_TICK_IMPACT_PERCENT = 0.005; // hard cap: a single tick can move price by at most 0.5% from user orders
+// Market-impact model: how strongly user orders move the simulated price.
+// impact (first tick) = (net buy value - net sell value) / MARKET_DEPTH_INR * IMPACT_COEFFICIENT
+// Example: a Rs 25,000 net buy moves the price ~0.15% on the first tick (~0.3% in total as pressure decays).
+// Increase IMPACT_COEFFICIENT to make orders move prices more, decrease it for less.
+const MARKET_DEPTH_INR = 1000000;
+const IMPACT_COEFFICIENT = 0.06;
 const ALERT_EVERY_N_TICKS = 250;
 const MAX_TRADE_TIMESTAMPS = 200;
 
@@ -386,9 +392,17 @@ async function processPendingOrder(order, io) {
     }
   }
 
+  // SELL: credit the proceeds.
+  // BUY : cash was escrowed at the limit (trigger) price when the order was placed, so if the
+  //       fill happened at a better (lower) price we must give the difference back.
+  const cashDelta = isSell
+    ? order.quantity * executionPrice
+    : round2((order.triggerPrice - executionPrice) * order.quantity);
+
   await applyTradeToUser(order.userId, {
-    cashDelta: isSell ? order.quantity * executionPrice : 0,
-    profitable: isSell && realizedPnL > 0
+    cashDelta,
+    profitable: isSell && realizedPnL > 0,
+    stopLoss: isBuy && !!order.stopLossPrice
   });
 
   recordExecutedTrade(symbol, order.side, order.quantity, executionPrice);
@@ -512,6 +526,7 @@ function updatePrices() {
       stock.dayHigh = stock.currentPrice;
       stock.dayLow = stock.currentPrice;
       stock.previousClose = stock.currentPrice;
+      stock.dailyPercentageChange = 0;
     });
   }
 
@@ -533,11 +548,10 @@ function updatePrices() {
     const pressure = orderPressure.get(stock.symbol);
 
     if (pressure && (pressure.buyValue > 0 || pressure.sellValue > 0)) {
-      const nominalLiquidity = Math.max(stock.currentPrice * 4000, 400000);
       const netValueImbalance = pressure.buyValue - pressure.sellValue;
 
       if (netValueImbalance !== 0) {
-        let impactPercent = (netValueImbalance / nominalLiquidity) * 0.004;
+        let impactPercent = (netValueImbalance / MARKET_DEPTH_INR) * IMPACT_COEFFICIENT;
         impactPercent = Math.max(-MAX_TICK_IMPACT_PERCENT, Math.min(MAX_TICK_IMPACT_PERCENT, impactPercent));
         impactDeltaPrice = stock.currentPrice * impactPercent;
       }
@@ -564,7 +578,7 @@ function updatePrices() {
     stock.currentPrice = newPrice;
     stock.dayHigh = Math.max(stock.dayHigh, newPrice);
     stock.dayLow = Math.min(stock.dayLow, newPrice);
-    stock.dailyPercentageChange = round2(((newPrice - stock.basePrice) / stock.basePrice) * 100);
+    stock.dailyPercentageChange = round2(((newPrice - stock.previousClose) / stock.previousClose) * 100);
     stock.volume += Math.floor(10 + Math.random() * 90);
 
     stock.sparkline.push(newPrice);

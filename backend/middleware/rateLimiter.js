@@ -1,9 +1,11 @@
 const rateLimit = require('express-rate-limit');
 
-// Login rate limiter: Max 5 attempts within 15 minutes window
+// Login rate limiter: max 5 FAILED attempts within a 15 minute window.
+// Successful logins are not counted, so a real user is never locked out of the demo.
 const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
+  limit: 5,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -14,7 +16,7 @@ const loginRateLimiter = rateLimit({
 // Forgot password rate limiter: 1 request per 60 seconds
 const forgotPasswordLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 1,
+  limit: 1,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

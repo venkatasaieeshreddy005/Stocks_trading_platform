@@ -5,7 +5,9 @@ import { useAuth } from './AuthContext';
 const SocketContext = createContext();
 
 export function SocketProvider({ children }) {
-  const { user } = useAuth();
+  const { user, token, refreshUserData } = useAuth();
+  const userId = user ? (user._id || user.id) : null;
+
   const [socket, setSocket] = useState(null);
   const [instruments, setInstruments] = useState([]);
   const [sentiment, setSentiment] = useState({
@@ -24,14 +26,9 @@ export function SocketProvider({ children }) {
     const socketUrl = window.location.hostname === 'localhost' ? 'http://localhost:8080' : '/';
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5
-    });
-
-    newSocket.on('connect', () => {
-      // Join private user room if logged in
-      if (user && user.id) {
-        newSocket.emit('JOIN_USER_ROOM', user.id);
-      }
+      reconnectionAttempts: 5,
+      // The server verifies this token and puts the socket in the user's private room.
+      auth: { token: token || undefined }
     });
 
     // Real-time market tick stream (every 2 seconds)
@@ -62,26 +59,27 @@ export function SocketProvider({ children }) {
       setUnreadAlertsCount((prev) => prev + 1);
     });
 
-    newSocket.on('ORDER_EXECUTED', (data) => {
-      if (data.alert) {
-        setLiveAlerts((prev) => [data.alert, ...prev]);
+    // Order events: show the alert AND refresh balance (cash changes when orders fill / cancel)
+    const handleOrderEvent = (data) => {
+      if (data && data.alert) {
+        setLiveAlerts((prev) => [data.alert, ...prev.slice(0, 20)]);
         setUnreadAlertsCount((prev) => prev + 1);
       }
-    });
+      if (typeof refreshUserData === 'function') refreshUserData();
+    };
 
-    newSocket.on('STOP_LOSS_TRIGGERED', (data) => {
-      if (data.alert) {
-        setLiveAlerts((prev) => [data.alert, ...prev]);
-        setUnreadAlertsCount((prev) => prev + 1);
-      }
-    });
+    newSocket.on('ORDER_EXECUTED', handleOrderEvent);
+    newSocket.on('STOP_LOSS_TRIGGERED', handleOrderEvent);
+    newSocket.on('ORDER_CANCELLED', handleOrderEvent);
 
     setSocket(newSocket);
 
     return () => {
       newSocket.disconnect();
     };
-  }, [user?.id]);
+    // Reconnect when the logged in user (or their token) changes so the private room is joined.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, token]);
 
   // Fast map lookup by symbol: instrumentsMap.get('INFY')
   const instrumentsMap = useMemo(() => {
@@ -125,4 +123,3 @@ export function SocketProvider({ children }) {
 export function useSocket() {
   return useContext(SocketContext);
 }
-

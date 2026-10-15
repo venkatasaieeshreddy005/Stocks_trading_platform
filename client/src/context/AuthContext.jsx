@@ -1,17 +1,25 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const AuthContext = createContext();
 
+const TOKEN_KEY = 'tradezen_token';
+
+function readStoredToken() {
+  const t = localStorage.getItem(TOKEN_KEY);
+  // guard against a previously stored "undefined" / "null" string
+  return t && t !== 'undefined' && t !== 'null' ? t : null;
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('tradezen_token') || null);
+  const [user, setUserState] = useState(null);
+  const [token, setToken] = useState(() => readStoredToken());
   const [loading, setLoading] = useState(true);
 
   // Load user data on mount if token exists
   useEffect(() => {
     async function loadUser() {
       if (!token) {
-        setUser(null);
+        setUserState(null);
         setLoading(false);
         return;
       }
@@ -20,17 +28,18 @@ export function AuthProvider({ children }) {
         const res = await fetch('/api/auth/me', {
           headers: {
             Authorization: `Bearer ${token}`
-          }
+          },
+          credentials: 'include'
         });
 
         if (res.ok) {
           const data = await res.json();
-          setUser(data.user);
-        } else {
+          setUserState(data.user);
+        } else if (res.status === 401) {
           // Token invalid or expired
-          localStorage.removeItem('tradezen_token');
+          localStorage.removeItem(TOKEN_KEY);
           setToken(null);
-          setUser(null);
+          setUserState(null);
         }
       } catch (err) {
         console.error('Failed to load user:', err);
@@ -41,6 +50,20 @@ export function AuthProvider({ children }) {
 
     loadUser();
   }, [token]);
+
+  /**
+   * Public setUser.
+   * Signup/Login pages store the new token in localStorage and then call setUser(user).
+   * We also pick that token up here, so the rest of the app (which reads `token`
+   * from this context) is authenticated immediately - without a page reload.
+   */
+  const setUser = useCallback((nextUser) => {
+    setUserState(nextUser);
+    const stored = readStoredToken();
+    if (stored) {
+      setToken((prev) => (prev === stored ? prev : stored));
+    }
+  }, []);
 
   // Login handler
   const login = async (email, password) => {
@@ -59,13 +82,14 @@ export function AuthProvider({ children }) {
       throw new Error(data.message || 'Login failed');
     }
 
-    localStorage.setItem('tradezen_token', data.token);
+    localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
-    setUser(data.user);
+    setUserState(data.user);
     return data.user;
   };
 
-  // Register handler (₹50,000 demo capital credited)
+  // Register handler (₹50,000 demo capital credited after email verification)
+  // Returns { needsVerification, email, verificationCode } - the user must verify with the 6-digit code.
   const register = async (name, email, password) => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
@@ -79,10 +103,12 @@ export function AuthProvider({ children }) {
       throw new Error(data.message || 'Registration failed');
     }
 
-    localStorage.setItem('tradezen_token', data.token);
-    setToken(data.token);
-    setUser(data.user);
-    return data.user;
+    return {
+      needsVerification: true,
+      email: data.email || email,
+      verificationCode: data.verificationCode,
+      message: data.message
+    };
   };
 
   // Demo 1-Click Login handler
@@ -98,28 +124,33 @@ export function AuthProvider({ children }) {
       throw new Error(data.message || 'Demo login failed');
     }
 
-    localStorage.setItem('tradezen_token', data.token);
+    localStorage.setItem(TOKEN_KEY, data.token);
     setToken(data.token);
-    setUser(data.user);
+    setUserState(data.user);
     return data.user;
   };
 
   // Refresh user balance and metrics
-  const refreshUserData = async () => {
-    if (!token) return;
+  const refreshUserData = useCallback(async () => {
+    const currentToken = readStoredToken();
+    if (!currentToken) return;
     try {
       const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken}` },
         credentials: 'include'
       });
       if (res.ok) {
         const data = await res.json();
-        setUser(data.user);
+        setUserState(data.user);
+      } else if (res.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        setToken(null);
+        setUserState(null);
       }
     } catch (err) {
       console.error('Refresh user data error:', err);
     }
-  };
+  }, []);
 
   // Logout handler
   const logout = async () => {
@@ -131,9 +162,9 @@ export function AuthProvider({ children }) {
     } catch (e) {
       // Ignore network errors on logout
     }
-    localStorage.removeItem('tradezen_token');
+    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
-    setUser(null);
+    setUserState(null);
   };
 
   const value = {
@@ -155,4 +186,3 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   return useContext(AuthContext);
 }
-

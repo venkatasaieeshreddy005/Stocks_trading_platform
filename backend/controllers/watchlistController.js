@@ -1,6 +1,24 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Alert = require('../models/Alert');
 const { getInstrument } = require('../engine/simulation');
+
+const MAX_WATCHLIST_SIZE = 50;
+
+/**
+ * Alerts visible to a user:
+ *  - alerts addressed to that user (order fills, stop-loss, their watchlist alerts)
+ *  - broadcast alerts (userId = null) for symbols on their watchlist
+ * Alerts that belong to OTHER users are never returned.
+ */
+function buildAlertFilter(user) {
+  const symbols = user.watchlist || [];
+  const conditions = [{ userId: user._id }];
+  if (symbols.length > 0) {
+    conditions.push({ userId: null, instrumentToken: { $in: symbols } });
+  }
+  return { $or: conditions };
+}
 
 /**
  * GET /api/watchlist
@@ -39,12 +57,16 @@ exports.getWatchlist = async (req, res) => {
  */
 exports.toggleWatchlist = async (req, res) => {
   try {
-    const { symbol } = req.body;
-    if (!symbol) {
+    const { symbol } = req.body || {};
+    if (!symbol || typeof symbol !== 'string') {
       return res.status(400).json({ message: 'Symbol is required.' });
     }
 
-    const upperSymbol = symbol.toUpperCase();
+    const upperSymbol = symbol.trim().toUpperCase();
+    if (!getInstrument(upperSymbol)) {
+      return res.status(404).json({ message: `Instrument '${upperSymbol}' not found.` });
+    }
+
     const user = await User.findById(req.user._id);
 
     if (!user.watchlist) {
@@ -58,6 +80,9 @@ exports.toggleWatchlist = async (req, res) => {
       user.watchlist.splice(index, 1);
       isAdded = false;
     } else {
+      if (user.watchlist.length >= MAX_WATCHLIST_SIZE) {
+        return res.status(400).json({ message: `Watchlist is full (max ${MAX_WATCHLIST_SIZE} instruments).` });
+      }
       user.watchlist.push(upperSymbol);
       isAdded = true;
     }
@@ -76,22 +101,15 @@ exports.toggleWatchlist = async (req, res) => {
 
 /**
  * GET /api/watchlist/alerts
- * Strictly filtered to user's personal alerts and watchlisted stocks only
+ * Strictly filtered to the user's personal alerts and broadcast alerts for their watchlist
  */
 exports.getAlerts = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    const symbols = user.watchlist || [];
 
-    // Filter condition: user's personal order notifications OR alerts for stocks in their watchlist
-    const queryConditions = [{ userId: user._id }];
-    if (symbols.length > 0) {
-      queryConditions.push({ instrumentToken: { $in: symbols } });
-    }
-
-    const alerts = await Alert.find({
-      $or: queryConditions
-    }).sort({ createdAt: -1 }).limit(30);
+    const alerts = await Alert.find(buildAlertFilter(user))
+      .sort({ createdAt: -1 })
+      .limit(30);
 
     res.json({ alerts });
   } catch (err) {
@@ -101,10 +119,19 @@ exports.getAlerts = async (req, res) => {
 
 /**
  * DELETE /api/watchlist/alerts/:id
+ * A user can only dismiss their OWN alerts.
  */
 exports.dismissAlert = async (req, res) => {
   try {
-    await Alert.findByIdAndDelete(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ message: 'Alert not found.' });
+    }
+
+    const deleted = await Alert.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (!deleted) {
+      return res.status(404).json({ message: 'Alert not found.' });
+    }
+
     res.json({ message: 'Alert dismissed.' });
   } catch (err) {
     res.status(500).json({ message: 'Failed to dismiss alert.' });
@@ -113,21 +140,11 @@ exports.dismissAlert = async (req, res) => {
 
 /**
  * DELETE /api/watchlist/alerts
+ * Clears only the current user's own alerts (shared broadcast alerts are left for others).
  */
 exports.clearAlerts = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    const symbols = user.watchlist || [];
-
-    const deleteConditions = [{ userId: user._id }];
-    if (symbols.length > 0) {
-      deleteConditions.push({ instrumentToken: { $in: symbols } });
-    }
-
-    await Alert.deleteMany({
-      $or: deleteConditions
-    });
-
+    await Alert.deleteMany({ userId: req.user._id });
     res.json({ message: 'All alerts cleared.' });
   } catch (err) {
     res.status(500).json({ message: 'Failed to clear alerts.' });
